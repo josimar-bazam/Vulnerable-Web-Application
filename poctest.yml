@@ -2,12 +2,10 @@ name: CI
 on:
  push:
    branches: 
- pull_request:
-   branches: 
-   - main
-
+     - master
+ 
 jobs:
- conviso-sast:
+ conviso-job:
    runs-on: ubuntu-latest
    container:
      image: convisoappsec/flowcli
@@ -19,3 +17,6 @@ jobs:
 
    - name: Run SAST
      run: conviso sast run
+
+   - name: run security gate
+     run: conviso vulnerability assert-security-rules --rules-file conviso-security-gate.yml
