@@ -22,11 +22,11 @@ jobs:
       #Please use only one of the following approaches in the same job
 
       #Using Tags, ordered by time
-     run: conviso deploy create with tag-tracker sort-by time
+     #run: conviso deploy create with tag-tracker sort-by time
       #Using Tags, ordered by versioning style (semantic version)
      run: conviso deploy create with tag-tracker sort-by versioning-style
       #Without using Tags, ordered by Git tree
-     run: conviso deploy create with values
+     #run: conviso deploy create with values
 
 
   # - name: run security gate
