@@ -1,11 +1,6 @@
 # Vulnerable Web Application 
 
-akhakshkaj
-1234
-
-dagdafdsadfsafdsads
-
-dsfadfasd
+Test SAST
 
 ![VulnWeb](https://github.com/OWASP/Vulnerable-Web-Application/blob/master/Resources/VulnWeb.png)
 
