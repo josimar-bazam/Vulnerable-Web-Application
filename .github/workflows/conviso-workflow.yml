@@ -1,29 +1,16 @@
-name: CI
-
-on:
- push:
-   branches: 
-     - master
-
+trigger:
+  - master  
 jobs:
- conviso-job:
-   runs-on: ubuntu-latest
-   container:
-     image: convisoappsec/flowcli
-     env:
-       FLOW_API_KEY:  ${{secrets.CONVISO_API_KEY}}
-       FLOW_PROJECT_CODE: ${{secrets.FLOW_PROJECT_CODE}}
-   steps:
-   - uses: actions/checkout@v3
+- job: Conviso_Appsec_Job_Full
+  pool:
+    vmImage: 'ubuntu-16.04'
+  container:
+    image: 'convisoappsec/flowcli'
+  variables:
+    FLOW_PROJECT_CODE: 'ewQqYOME2Nc6AgSp'
 
-   - name: Run SAST
-     run: conviso sast run
-     
-   - name: codereview
-     #run: conviso deploy create with tag-tracker sort-by time
-     #run: conviso deploy create with tag-tracker sort-by versioning-style
-     run: conviso deploy create with values
-
-
-   # name: run security gate
-   # run: conviso vulnerability assert-security-rules --rules-file conviso-security-gate.yml
+  steps:
+    - bash: |
+          conviso deploy create -f env_vars with values > created_deploy_vars    
+      env:
+         FLOW_API_KEY: $(FLOW_API_KEY)    
