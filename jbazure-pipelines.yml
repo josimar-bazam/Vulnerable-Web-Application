@@ -1,0 +1,16 @@
+trigger:
+  - master  
+jobs:
+- job: Conviso_Appsec_Job_Full
+  pool:
+    vmImage: 'ubuntu-16.04'
+  container:
+    image: 'convisoappsec/flowcli'
+  variables:
+    FLOW_PROJECT_CODE: 'ewQqYOME2Nc6AgSp'
+
+  steps:
+    - bash: |
+          conviso deploy create -f env_vars with values > created_deploy_vars    
+      env:
+         FLOW_API_KEY: $(FLOW_API_KEY)    
