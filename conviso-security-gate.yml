@@ -2,10 +2,10 @@ rules:
 - from: any
   severity:
     critical:
-      maximum: 3
+      maximum: 0
     high:
-      maximum: 2
+      maximum: 0
     medium:
-      maximum: 2
+      maximum: 0
     low:
-      maximum: 2
+      maximum: 0
