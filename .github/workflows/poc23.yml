@@ -1,4 +1,4 @@
-name: CI
+name: CONVISO APPSEC
 
 on:
   push:
@@ -15,8 +15,6 @@ jobs:
         FLOW_API_KEY: ${{secrets.CONVISO_API_KEY}}
 
     steps:
-      - name: Debug API Key
-        run: echo "API Key: ${{secrets.CONVISO_API_KEY}}"
 
       - uses: actions/checkout@v3
 
