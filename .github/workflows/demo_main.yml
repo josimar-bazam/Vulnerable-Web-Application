@@ -1,0 +1,25 @@
+name: CONVISO AST
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  conviso-ast:
+    runs-on: ubuntu-latest
+    container:
+      image: convisoappsec/convisocli
+      env:
+        CONVISO_API_KEY: ${{secrets.CONVISO_API_KEY}}
+        CONVISO_COMPANY_ID: 544  
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Run AST
+        run: |
+          export CONVISO_COMPANY_ID=544
+          conviso ast run
