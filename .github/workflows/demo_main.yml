@@ -15,7 +15,7 @@ jobs:
       image: convisoappsec/convisocli
       env:
         CONVISO_API_KEY: ${{secrets.CONVISO_API_KEY}}
-        CONVISO_COMPANY_ID: 544  
+        CONVISO_COMPANY_ID: 843 
     steps:
       - uses: actions/checkout@v3
 
