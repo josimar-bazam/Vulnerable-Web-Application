@@ -53,4 +53,4 @@ The `php.ini` file should be  altered. You can find the location of your `php.in
 The contents of this repository are licensed under the GNU General Public License v3.0.
  
 ## Version
-1.0.0
+1.0.0.2
