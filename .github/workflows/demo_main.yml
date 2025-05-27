@@ -31,43 +31,45 @@ jobs:
           BLOCKED_CWES=$(yq e '.rules[] | select(.action=="block") | .id' conviso-security-gate.yml | jq -R -s -c 'split("\n")[:-1]')
           echo "BLOCKED_CWES=$BLOCKED_CWES" >> $GITHUB_ENV
 
-      - name: Get Asset ID from repo short name
+      - name: Search assets containing repo name
+        id: search_assets
         run: |
-          QUERY='
+          QUERY=$(jq -n --arg companyId "$CONVISO_COMPANY_ID" --arg filterName "$REPO_SHORT_NAME" '
           {
-            "query": "query($companyId:Int!, $filterName:String) { assets(companyId: $companyId, filters: {name: $filterName}, pagination: {page:1, perPage:10}) { collection { id name } } }",
-            "variables": {
-              "companyId": '"$CONVISO_COMPANY_ID"',
-              "filterName": "'"$REPO_SHORT_NAME"'"
-            }
-          }'
+            query: "query($companyId:Int!, $filterName:String) { assets(companyId: $companyId, filters: {nameContains: $filterName}, pagination: {page:1, perPage:10}) { collection { id name } } }",
+            variables: { companyId: ($companyId|tonumber), filterName: $filterName }
+          }')
+
+          echo "Query enviada:"
+          echo "$QUERY"
 
           RESPONSE=$(curl -s -X POST https://app.convisoappsec.com/graphql \
             -H "Authorization: Bearer $CONVISO_API_KEY" \
             -H "Content-Type: application/json" \
             -d "$QUERY")
 
+          echo "Resposta:"
+          echo "$RESPONSE" | jq
+
           ASSET_ID=$(echo "$RESPONSE" | jq -r '.data.assets.collection[0].id')
 
           if [ "$ASSET_ID" = "null" ] || [ -z "$ASSET_ID" ]; then
-            echo "Asset não encontrado para o repo $REPO_SHORT_NAME"
+            echo "Asset não encontrado para nome contendo: $REPO_SHORT_NAME"
             exit 1
           fi
 
           echo "ASSET_ID=$ASSET_ID" >> $GITHUB_ENV
+          echo "::set-output name=asset_id::$ASSET_ID"
 
       - name: Validate vulnerabilities by CWE rules
         run: |
           echo "Validando asset $ASSET_ID para CWEs bloqueados: $BLOCKED_CWES"
 
-          QUERY='
+          QUERY=$(jq -n --arg companyId "$CONVISO_COMPANY_ID" --argjson assetIds "[${ASSET_ID}]" '
           {
-            "query": "query($companyId:Int!, $assetIds:[Int!]) { issues(companyId: $companyId, filters: {assetIds: $assetIds}) { collection { id title severity category asset { id name } } } }",
-            "variables": {
-              "companyId": '"$CONVISO_COMPANY_ID"',
-              "assetIds": ['$ASSET_ID']
-            }
-          }'
+            query: "query($companyId:Int!, $assetIds:[Int!]) { issues(companyId: $companyId, filters: {assetIds: $assetIds}) { collection { id title severity category asset { id name } } } }",
+            variables: { companyId: ($companyId|tonumber), assetIds: $assetIds }
+          }')
 
           RESPONSE=$(curl -s -X POST https://app.convisoappsec.com/graphql \
             -H "Authorization: Bearer $CONVISO_API_KEY" \
