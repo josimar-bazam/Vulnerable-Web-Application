@@ -1,4 +1,4 @@
-name: CONVISO AST Validation
+name: Validate Asset Vulnerabilities by CWE
 
 on:
   push:
@@ -16,8 +16,7 @@ jobs:
       CONVISO_COMPANY_ID: 843
       REPO_NAME: ${{ github.repository }}
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v3
 
       - name: Install dependencies (jq, curl, yq)
         run: |
@@ -28,13 +27,11 @@ jobs:
         run: echo "REPO_SHORT_NAME=$(basename $REPO_NAME)" >> $GITHUB_ENV
 
       - name: Extract blocked CWEs from rules file
-        id: extract_cwes
         run: |
           BLOCKED_CWES=$(yq e '.rules[] | select(.action=="block") | .id' conviso-security-gate.yml | jq -R -s -c 'split("\n")[:-1]')
           echo "BLOCKED_CWES=$BLOCKED_CWES" >> $GITHUB_ENV
 
       - name: Get Asset ID from repo short name
-        id: get_asset
         run: |
           QUERY='
           {
@@ -87,7 +84,3 @@ jobs:
           else
             echo "Ativo está conforme, sem vulnerabilidades CWE bloqueadas."
           fi
-
-      - name: Run AST with Security Gate
-        run: |
-          conviso ast run --rules-file=./conviso-security-gate.yml
