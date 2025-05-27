@@ -7,7 +7,7 @@ rules:
       - 522  # Insufficiently Protected Credentials
       - 312  # Cleartext Storage
       - 523  # Unprotected Transport of Credentials
-      - 94   # CWE-94: Improper Control of Generation of Code ('Code Injection'
+      - 94   # Code Injection
     severity:
       critical:
         maximum: 0
