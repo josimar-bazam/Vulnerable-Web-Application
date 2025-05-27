@@ -11,19 +11,16 @@ on:
 jobs:
   conviso-cwe-then-ast:
     runs-on: ubuntu-latest
-    container:
-      image: convisoappsec/convisocli
-      env:
-        CONVISO_API_KEY: ${{ secrets.CONVISO_API_KEY }}
-        CONVISO_COMPANY_ID: 843
-        REPO_NAME: ${{ github.repository }}
+    env:
+      CONVISO_API_KEY: ${{ secrets.CONVISO_API_KEY }}
+      CONVISO_COMPANY_ID: 843
+      REPO_NAME: ${{ github.repository }}
     steps:
       - uses: actions/checkout@v3
 
       - name: Extract repo short name
         id: extract_name
-        run: |
-          echo "REPO_SHORT_NAME=$(basename ${{ github.repository }})" >> $GITHUB_ENV
+        run: echo "REPO_SHORT_NAME=$(basename ${{ github.repository }})" >> $GITHUB_ENV
 
       - name: Get Asset ID from repo name
         id: get_asset_id
@@ -79,5 +76,9 @@ jobs:
           fi
 
       - name: Run AST with Security Gate
-        run: |
-          conviso ast run --rules-file=./conviso-security-gate.yml
+        container:
+          image: convisoappsec/convisocli
+          env:
+            CONVISO_API_KEY: ${{ secrets.CONVISO_API_KEY }}
+            CONVISO_COMPANY_ID: 843
+        run: conviso ast run --rules-file=./conviso-security-gate.yml
