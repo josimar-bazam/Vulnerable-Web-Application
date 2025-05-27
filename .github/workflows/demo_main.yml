@@ -19,6 +19,6 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: Run AST
+      - name: Run AST with Security Gate
         run: |
-          conviso ast run
+          conviso ast run --rules-file=./conviso-security-gate.yml
