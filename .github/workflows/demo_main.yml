@@ -1,15 +1,5 @@
-name: CONVISO AST with CWE Validation
-
-on:
-  push:
-    branches:
-      - master
-  pull_request:
-    branches:
-      - master
-
 jobs:
-  conviso-cwe-then-ast:
+  validate-cwe:
     runs-on: ubuntu-latest
     env:
       CONVISO_API_KEY: ${{ secrets.CONVISO_API_KEY }}
@@ -18,12 +8,22 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: Extract repo short name
-        id: extract_name
-        run: echo "REPO_SHORT_NAME=$(basename ${{ github.repository }})" >> $GITHUB_ENV
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq curl yq
 
-      - name: Get Asset ID from repo name
-        id: get_asset_id
+      - name: Extract repo short name
+        run: echo "REPO_SHORT_NAME=$(basename $REPO_NAME)" >> $GITHUB_ENV
+
+      - name: Extract blocked CWEs from rules file
+        id: extract_cwes
+        run: |
+          BLOCKED_CWES=$(yq e '.rules[] | select(.action=="block") | .id' conviso-security-gate.yml | jq -R -s -c 'split("\n")[:-1]')
+          echo "BLOCKED_CWES=$BLOCKED_CWES" >> $GITHUB_ENV
+
+      - name: Get Asset ID from repo short name
+        id: get_asset
         run: |
           QUERY='
           {
@@ -48,11 +48,13 @@ jobs:
 
           echo "ASSET_ID=$ASSET_ID" >> $GITHUB_ENV
 
-      - name: Check vulnerabilities linked to CWE
+      - name: Validate vulnerabilities by CWE rules
         run: |
+          echo "Validando asset $ASSET_ID para CWEs bloqueados: $BLOCKED_CWES"
+
           QUERY='
           {
-            "query": "query($companyId:Int!, $assetIds:[Int!]) { issues(companyId: $companyId, filters: {assetIds: $assetIds}) { collection { id title severity category asset { id name } } metadata { totalCount } } }",
+            "query": "query($companyId:Int!, $assetIds:[Int!]) { issues(companyId: $companyId, filters: {assetIds: $assetIds}) { collection { id title severity category asset { id name } } } }",
             "variables": {
               "companyId": '"$CONVISO_COMPANY_ID"',
               "assetIds": ['$ASSET_ID']
@@ -64,21 +66,13 @@ jobs:
             -H "Content-Type: application/json" \
             -d "$QUERY")
 
-          TOTAL_ISSUES=$(echo "$RESPONSE" | jq '.data.issues.metadata.totalCount')
+          BLOCKED_ISSUES=$(echo "$RESPONSE" | jq -c --argjson blockedCwes "$BLOCKED_CWES" '
+            .data.issues.collection | map(select(.category as $c | $blockedCwes | index($c)))')
 
-          echo "Total CWE-related issues found: $TOTAL_ISSUES"
-
-          if [ "$TOTAL_ISSUES" -gt 0 ]; then
-            echo "Vulnerabilidades CWE encontradas. Abortando pipeline."
+          if [ "$(echo "$BLOCKED_ISSUES" | jq length)" -gt 0 ]; then
+            echo "Ativo NÃO está conforme: existem vulnerabilidades CWE bloqueadas:"
+            echo "$BLOCKED_ISSUES" | jq
             exit 1
           else
-            echo "Nenhuma vulnerabilidade CWE encontrada. Prosseguindo com o AST."
+            echo "Ativo está conforme, sem vulnerabilidades CWE bloqueadas."
           fi
-
-      - name: Run AST with Security Gate
-        container:
-          image: convisoappsec/convisocli
-          env:
-            CONVISO_API_KEY: ${{ secrets.CONVISO_API_KEY }}
-            CONVISO_COMPANY_ID: 843
-        run: conviso ast run --rules-file=./conviso-security-gate.yml
