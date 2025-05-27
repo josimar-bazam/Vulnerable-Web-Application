@@ -1,34 +1,35 @@
-name: Validate Asset Vulnerabilities by CWE
+name: Conviso Security Gate
 
 on:
   push:
-    branches:
-      - master
+    branches: [ main ]
   pull_request:
-    branches:
-      - master
+    branches: [ main ]
 
 jobs:
-  validate-cwe:
+  validate-vulnerabilities:
     runs-on: ubuntu-latest
+    env:
+      CONVISO_API_KEY: ${{ secrets.CONVISO_API_KEY }}
+      CONVISO_COMPANY_ID: 843
+      REPO_SHORT_NAME: ${{ github.event.repository.name }}
+      BLOCKED_CWES: ["CWE-94", "CWE-259"]
+      
     steps:
-      - name: Set env variables
-        run: |
-          echo "REPO_SHORT_NAME=${{ github.event.repository.name }}" >> $GITHUB_ENV
-          echo "CONVISO_COMPANY_ID=${{ secrets.CONVISO_COMPANY_ID }}" >> $GITHUB_ENV
-          echo "CONVISO_API_KEY=${{ secrets.CONVISO_API_KEY }}" >> $GITHUB_ENV
-          # Defina quais CWE bloqueiam o build (array JSON)
-          echo "BLOCKED_CWES=[\"CWE-94\", \"CWE-259\"]" >> $GITHUB_ENV
-
-      - name: Install jq
-        run: sudo apt-get update && sudo apt-get install -y jq
+      - name: Checkout repository
+        uses: actions/checkout@v3
 
       - name: Get Asset ID by Repository Name
         id: get_asset
         run: |
+          echo "🔍 Buscando asset com nome: $REPO_SHORT_NAME"
+
           QUERY=$(jq -n --arg companyId "$CONVISO_COMPANY_ID" --arg filterName "$REPO_SHORT_NAME" '{
             query: "query($companyId:Int!, $filterName:String) { assets(companyId: $companyId, filters: {name: $filterName}, pagination: {page:1, perPage:1}) { collection { id name } } }",
-            variables: { companyId: ($companyId|tonumber), filterName: $filterName }
+            variables: {
+              companyId: ($companyId | tonumber),
+              filterName: $filterName
+            }
           }')
 
           RESPONSE=$(curl -s -X POST https://app.convisoappsec.com/graphql \
@@ -36,24 +37,28 @@ jobs:
             -H "Content-Type: application/json" \
             -d "$QUERY")
 
-          ASSET_ID=$(echo "$RESPONSE" | jq -r '.data.assets.collection[0].id')
+          echo "📦 Resposta da API: $RESPONSE"
 
-          if [ "$ASSET_ID" = "null" ] || [ -z "$ASSET_ID" ]; then
-            echo "Asset não encontrado para o repo $REPO_SHORT_NAME"
+          ASSET_ID=$(echo "$RESPONSE" | jq -r '.data.assets.collection[0].id // empty')
+
+          if [ -z "$ASSET_ID" ]; then
+            echo "❌ Asset não encontrado para o repo $REPO_SHORT_NAME"
             exit 1
           fi
 
-          echo "Asset encontrado: ID=$ASSET_ID"
+          echo "✅ Asset encontrado: ID=$ASSET_ID"
           echo "ASSET_ID=$ASSET_ID" >> $GITHUB_ENV
 
       - name: Validate vulnerabilities by CWE rules
         run: |
-          echo "Validando asset $ASSET_ID para CWEs bloqueados: $BLOCKED_CWES"
+          echo "🔎 Validando asset $ASSET_ID para CWEs bloqueados: $BLOCKED_CWES"
 
-          QUERY=$(jq -n --arg companyId "$CONVISO_COMPANY_ID" --argjson assetIds "[$ASSET_ID]" '
-          {
-            query: "query GetIssuesWithSeverityAndCwe($companyId:Int!, $assetIds:[Int!]) { issues(companyId: $companyId, pagination: {page:1, perPage:100}, filters: {assetIds: $assetIds}) { collection { id title severity category asset { id name } } } } }",
-            variables: { companyId: ($companyId|tonumber), assetIds: $assetIds }
+          QUERY=$(jq -n --arg companyId "$CONVISO_COMPANY_ID" --argjson assetIds "[$ASSET_ID]" '{
+            query: "query GetIssuesWithSeverityAndCwe($companyId:Int!, $assetIds:[Int!]) { issues(companyId: $companyId, pagination: {page:1, perPage:100}, filters: {assetIds: $assetIds}) { collection { id title severity category asset { id name } } } }",
+            variables: {
+              companyId: ($companyId | tonumber),
+              assetIds: $assetIds
+            }
           }')
 
           RESPONSE=$(curl -s -X POST https://app.convisoappsec.com/graphql \
@@ -64,12 +69,10 @@ jobs:
           BLOCKED_ISSUES=$(echo "$RESPONSE" | jq -c --argjson blockedCwes "$BLOCKED_CWES" '
             .data.issues.collection | map(select(.category as $c | $blockedCwes | index($c)))')
 
-          COUNT=$(echo "$BLOCKED_ISSUES" | jq length)
-
-          if [ "$COUNT" -gt 0 ]; then
-            echo "Ativo NÃO está conforme: existem vulnerabilidades CWE bloqueadas:"
+          if [ "$(echo "$BLOCKED_ISSUES" | jq length)" -gt 0 ]; then
+            echo "❌ Ativo NÃO está conforme: vulnerabilidades com CWE bloqueadas encontradas:"
             echo "$BLOCKED_ISSUES" | jq
             exit 1
           else
-            echo "Ativo está conforme, sem vulnerabilidades CWE bloqueadas."
+            echo "✅ Ativo está conforme, sem vulnerabilidades CWE bloqueadas."
           fi
