@@ -2,32 +2,32 @@ name: Conviso Security Gate
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
 
 jobs:
-  validate-vulnerabilities:
+  check-vulnerabilities:
     runs-on: ubuntu-latest
+
     env:
       CONVISO_API_KEY: ${{ secrets.CONVISO_API_KEY }}
+      BLOCKED_CWES: '["CWE-94", "CWE-259"]'
       CONVISO_COMPANY_ID: 843
       REPO_SHORT_NAME: ${{ github.event.repository.name }}
-      BLOCKED_CWES: ["CWE-94", "CWE-259"]
-      
+
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Get Asset ID by Repository Name
-        id: get_asset
         run: |
-          echo "🔍 Buscando asset com nome: $REPO_SHORT_NAME"
+          echo "🔍 Buscando asset para o repositório $REPO_SHORT_NAME"
 
-          QUERY=$(jq -n --arg companyId "$CONVISO_COMPANY_ID" --arg filterName "$REPO_SHORT_NAME" '{
-            query: "query($companyId:Int!, $filterName:String) { assets(companyId: $companyId, filters: {name: $filterName}, pagination: {page:1, perPage:1}) { collection { id name } } }",
+          QUERY=$(jq -n --arg filterName "$REPO_SHORT_NAME" '{
+            query: "query($companyId:Int!, $filterName:String) { assets(companyId: 843, filters: {name: $filterName}, pagination: {page:1, perPage:1}) { collection { id name } } }",
             variables: {
-              companyId: ($companyId | tonumber),
+              companyId: 843,
               filterName: $filterName
             }
           }')
@@ -51,14 +51,11 @@ jobs:
 
       - name: Validate vulnerabilities by CWE rules
         run: |
-          echo "🔎 Validando asset $ASSET_ID para CWEs bloqueados: $BLOCKED_CWES"
+          echo "🔎 Validando vulnerabilidades do asset $ASSET_ID com CWEs bloqueados: $BLOCKED_CWES"
 
-          QUERY=$(jq -n --arg companyId "$CONVISO_COMPANY_ID" --argjson assetIds "[$ASSET_ID]" '{
-            query: "query GetIssuesWithSeverityAndCwe($companyId:Int!, $assetIds:[Int!]) { issues(companyId: $companyId, pagination: {page:1, perPage:100}, filters: {assetIds: $assetIds}) { collection { id title severity category asset { id name } } } }",
-            variables: {
-              companyId: ($companyId | tonumber),
-              assetIds: $assetIds
-            }
+          QUERY=$(jq -n --argjson assetIds "[$ASSET_ID]" '{
+            query: "query GetIssuesWithSeverityAndCwe($companyId:Int!, $assetIds:[Int!]) { issues(companyId: 843, pagination: {page:1, perPage:100}, filters: {assetIds: $assetIds}) { collection { id title severity category asset { id name } } } }",
+            variables: { companyId: 843, assetIds: $assetIds }
           }')
 
           RESPONSE=$(curl -s -X POST https://app.convisoappsec.com/graphql \
@@ -70,9 +67,9 @@ jobs:
             .data.issues.collection | map(select(.category as $c | $blockedCwes | index($c)))')
 
           if [ "$(echo "$BLOCKED_ISSUES" | jq length)" -gt 0 ]; then
-            echo "❌ Ativo NÃO está conforme: vulnerabilidades com CWE bloqueadas encontradas:"
+            echo "🚫 Ativo NÃO está conforme. Vulnerabilidades CWE bloqueadas encontradas:"
             echo "$BLOCKED_ISSUES" | jq
             exit 1
           else
-            echo "✅ Ativo está conforme, sem vulnerabilidades CWE bloqueadas."
+            echo "✅ Ativo está conforme, sem CWEs bloqueados."
           fi
