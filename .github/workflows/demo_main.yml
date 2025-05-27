@@ -1,4 +1,4 @@
-name: CONVISO AST
+name: CONVISO AST with CWE Validation
 
 on:
   push:
@@ -9,15 +9,74 @@ on:
       - master
 
 jobs:
-  conviso-ast:
+  conviso-cwe-then-ast:
     runs-on: ubuntu-latest
     container:
       image: convisoappsec/convisocli
       env:
-        CONVISO_API_KEY: ${{secrets.CONVISO_API_KEY}}
-        CONVISO_COMPANY_ID: 843 
+        CONVISO_API_KEY: ${{ secrets.CONVISO_API_KEY }}
+        CONVISO_COMPANY_ID: 843
+        REPO_NAME: ${{ github.repository }}
     steps:
       - uses: actions/checkout@v3
+
+      - name: Extract repo short name
+        id: extract_name
+        run: |
+          echo "REPO_SHORT_NAME=$(basename ${{ github.repository }})" >> $GITHUB_ENV
+
+      - name: Get Asset ID from repo name
+        id: get_asset_id
+        run: |
+          QUERY='
+          {
+            "query": "query($companyId:Int!, $filterName:String) { assets(companyId: $companyId, filters: {name: $filterName}, pagination: {page:1, perPage:10}) { collection { id name } } }",
+            "variables": {
+              "companyId": '"$CONVISO_COMPANY_ID"',
+              "filterName": "'"$REPO_SHORT_NAME"'"
+            }
+          }'
+
+          RESPONSE=$(curl -s -X POST https://app.convisoappsec.com/graphql \
+            -H "Authorization: Bearer $CONVISO_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d "$QUERY")
+
+          ASSET_ID=$(echo "$RESPONSE" | jq -r '.data.assets.collection[0].id')
+
+          if [ "$ASSET_ID" = "null" ] || [ -z "$ASSET_ID" ]; then
+            echo "Asset não encontrado para o repo $REPO_SHORT_NAME"
+            exit 1
+          fi
+
+          echo "ASSET_ID=$ASSET_ID" >> $GITHUB_ENV
+
+      - name: Check vulnerabilities linked to CWE
+        run: |
+          QUERY='
+          {
+            "query": "query($companyId:Int!, $assetIds:[Int!]) { issues(companyId: $companyId, filters: {assetIds: $assetIds}) { collection { id title severity category asset { id name } } metadata { totalCount } } }",
+            "variables": {
+              "companyId": '"$CONVISO_COMPANY_ID"',
+              "assetIds": ['$ASSET_ID']
+            }
+          }'
+
+          RESPONSE=$(curl -s -X POST https://app.convisoappsec.com/graphql \
+            -H "Authorization: Bearer $CONVISO_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d "$QUERY")
+
+          TOTAL_ISSUES=$(echo "$RESPONSE" | jq '.data.issues.metadata.totalCount')
+
+          echo "Total CWE-related issues found: $TOTAL_ISSUES"
+
+          if [ "$TOTAL_ISSUES" -gt 0 ]; then
+            echo "Vulnerabilidades CWE encontradas. Abortando pipeline."
+            exit 1
+          else
+            echo "Nenhuma vulnerabilidade CWE encontrada. Prosseguindo com o AST."
+          fi
 
       - name: Run AST with Security Gate
         run: |
