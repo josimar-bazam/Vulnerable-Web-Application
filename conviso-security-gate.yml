@@ -1,15 +1,22 @@
 rules:
-  - from: any
-    cwe:
-      - 798  # Hard-coded Credentials
-      - 259  # Hard-coded Password
-      - 321  # Hard-coded Crypto Key
-      - 522  # Insufficiently Protected Credentials
-      - 312  # Cleartext Storage
-      - 523  # Unprotected Transport of Credentials
-      - 94   # Code Injection
-    severity:
-      critical:
-        maximum: 0
-      high:
-        maximum: 0
+  - id: CWE-94
+    description: "Bloquear vulnerabilidades CWE-94 (Code Injection)"
+    action: block
+
+  - id: CWE-79
+    description: "Bloquear vulnerabilidades CWE-79 (Cross-site Scripting)"
+    action: block
+
+  - id: CWE-89
+    description: "Bloquear vulnerabilidades CWE-89 (SQL Injection)"
+    action: block
+
+  - id: CWE-352
+    description: "Bloquear vulnerabilidades CWE-352 (Cross-Site Request Forgery)"
+    action: block
+
+  - id: CWE-200
+    description: "Bloquear vulnerabilidades CWE-200 (Exposure of Sensitive Information)"
+    action: block
+
+# Pode adicionar mais regras aqui conforme sua necessidade
