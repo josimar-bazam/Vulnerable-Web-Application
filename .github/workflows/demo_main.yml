@@ -1,3 +1,13 @@
+name: CONVISO AST Validation
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+
 jobs:
   validate-cwe:
     runs-on: ubuntu-latest
@@ -6,9 +16,10 @@ jobs:
       CONVISO_COMPANY_ID: 843
       REPO_NAME: ${{ github.repository }}
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-      - name: Install dependencies
+      - name: Install dependencies (jq, curl, yq)
         run: |
           sudo apt-get update
           sudo apt-get install -y jq curl yq
@@ -76,3 +87,7 @@ jobs:
           else
             echo "Ativo está conforme, sem vulnerabilidades CWE bloqueadas."
           fi
+
+      - name: Run AST with Security Gate
+        run: |
+          conviso ast run --rules-file=./conviso-security-gate.yml
