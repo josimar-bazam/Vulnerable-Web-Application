@@ -22,19 +22,34 @@ jobs:
         export CONVISO_COMPANY_ID='443'
         conviso ast run --vulnerability-auto-close || true
         
-        # BUSCA DINÂMICA DO ARQUIVO SARIF GERADO
-        echo "Buscando arquivo SARIF gerado pelo Conviso..."
-        find /tmp -name "*.sarif" -exec cp {} ./output.sarif \; 2>/dev/null || true
+        echo "=== LISTANDO ARQUIVOS GERADOS EM /tmp ==="
+        ls -la /tmp/*.sarif 2>/dev/null || echo "Nenhum .sarif em /tmp"
         
-        # VALIDAÇÃO DE EXISTÊNCIA DO ARQUIVO ANTES DE PROSSEGUIR
-        if [ -f "./output.sarif" ]; then
-          echo "Sucesso: arquivo SARIF localizado e copiado para ./output.sarif"
+        # Copia inteligente para evitar sobrescrever com arquivos vazios
+        if [ -f "/tmp/output.sarif" ]; then
+          echo "Copiando /tmp/output.sarif definitivo..."
+          cp /tmp/output.sarif ./output.sarif
+        elif [ -f "/tmp/aggregator.sarif" ]; then
+          echo "Copiando /tmp/aggregator.sarif..."
+          cp /tmp/aggregator.sarif ./output.sarif
         else
-          echo "Erro: Nenhum arquivo SARIF foi gerado no processo."
+          echo "Buscando maior arquivo .sarif como fallback..."
+          MAIOR_SARIF=$(ls -S /tmp/*.sarif 2>/dev/null | head -n 1)
+          if [ -n "$MAIOR_SARIF" ]; then
+            echo "Copiando o maior arquivo: $MAIOR_SARIF"
+            cp "$MAIOR_SARIF" ./output.sarif
+          fi
+        fi
+        
+        # Validação visual do tamanho do arquivo antes de subir o artefato
+        if [ -f "./output.sarif" ]; then
+          echo "Sucesso: arquivo SARIF pronto em ./output.sarif"
+          ls -lh ./output.sarif
+        else
+          echo "Erro: Nenhum arquivo SARIF foi localizado."
           exit 1
         fi
 
-    # O arquivo "output.sarif" agora está na raiz do projeto e o upload funcionará perfeitamente
     - name: Upload SARIF Result
       uses: actions/upload-artifact@v4
       with:

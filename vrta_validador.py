@@ -7,7 +7,6 @@ import re
 arquivo_sast = sys.argv[1] if len(sys.argv) > 1 else './output.sarif'
 
 # 1. MAPEAMENTO COMPLETO DA CARTILHA DE QA (MUST HAVE)
-# Mapeamos o ID do requisito para o número bruto do CWE
 cartilha_must_have = {
     "89": "M-REQ-001 (SQL Injection)",
     "77": "M-REQ-001 (Command Injection)",
@@ -34,55 +33,71 @@ cartilha_must_have = {
     "250": "M-REQ-004 (Execution with Unnecessary Privileges)"
 }
 
-if not os.path.exists(arquivo_sast):
-    print("::warning::Arquivo SARIF não encontrado.")
-    sys.exit(0)
+print("=== DIAGNÓSTICO DE LEITURA DO SARIF ===")
+print(f"Diretório atual: {os.getcwd()}")
+print(f"Verificando arquivo: {arquivo_sast}")
 
-with open(arquivo_sast, 'r') as f:
-    sast_data = json.load(f)
+if not os.path.exists(arquivo_sast):
+    print(f"::error::Arquivo {arquivo_sast} NÃO foi encontrado!")
+    sys.exit(1)
+
+tamanho = os.path.getsize(arquivo_sast)
+print(f"Tamanho do arquivo lido: {tamanho} bytes")
+
+try:
+    with open(arquivo_sast, 'r') as f:
+        conteudo_completo = f.read()
+        sast_data = json.loads(conteudo_completo)
+    print("Sucesso: JSON do SARIF carregado na memória!")
+except Exception as e:
+    print(f"::error::Falha crítica ao decodificar JSON do SARIF: {e}")
+    sys.exit(1)
+
+runs = sast_data.get('runs', [])
+print(f"Quantidade de 'runs' no arquivo: {len(runs)}")
+
+# Varredura Global de Segurança (Fallback e Verificação de Conteúdo)
+cwes_globais = set(re.findall(r'(?i)CWE[-_:\s]?(\d+)', conteudo_completo))
+print(f"CWEs encontrados em todo o texto bruto do arquivo: {list(cwes_globais)}")
 
 violacoes = []
 regras_meta = {}
 
-# Mapeia as regras globais do SARIF para buscar descrições amigáveis depois
-for run in sast_data.get('runs', []):
+# Mapeia metadados de regras
+for run in runs:
     driver = run.get('tool', {}).get('driver', {})
     for rule in driver.get('rules', []):
         regras_meta[rule.get('id')] = rule
+print(f"Mapeadas {len(regras_meta)} definições de regras de metadados.")
 
-print("=== INICIANDO VARREDURA PROFUNDA DE REQUISITOS (VRTA) ===")
-
-# 2. VARREDURA DE ACHADOS COM REGEX
-for run in sast_data.get('runs', []):
-    for result in run.get('results', []):
+# 2. VARREDURA DE ACHADOS POR REGEX INDIVIDUAL
+total_resultados = 0
+for run in runs:
+    results = run.get('results', [])
+    total_resultados += len(results)
+    for result in results:
         rule_id = result.get('ruleId', '')
         
-        # Converte o bloco inteiro de resultado e os metadados da regra em texto string
+        # Concatena o achado e os metadados da regra para busca contextual
         objeto_completo_str = json.dumps(result)
         if rule_id in regras_meta:
             objeto_completo_str += " " + json.dumps(regras_meta[rule_id])
         
-        # Expressão Regular para capturar qualquer menção a CWE (Ex: CWE-89, cwe:78, CWE_98, CWE 89)
-        cwes_encontrados = re.findall(r'(?i)CWE[-_:\s]?(\d+)', objeto_completo_str)
+        # Procura por menções a CWEs no escopo deste achado
+        cwes_encontrados = list(set(re.findall(r'(?i)CWE[-_:\s]?(\d+)', objeto_completo_str)))
         
-        # Remove duplicatas encontradas para este mesmo achado
-        cwes_encontrados = list(set(cwes_encontrados))
-        
-        # Valida contra as regras críticas de QA
         for cwe_num in cwes_encontrados:
             if cwe_num in cartilha_must_have:
                 req_desc = cartilha_must_have[cwe_num]
                 
-                # Tenta buscar a localização do erro no código
                 try:
                     local = result['locations'][0]['physicalLocation']['artifactLocation']['uri']
                     linha = result['locations'][0]['physicalLocation']['region']['startLine']
                 except (KeyError, IndexError):
                     local, linha = "Desconhecido", "?"
                 
-                # Tenta buscar o título amigável da vulnerabilidade
                 try:
-                    titulo = regras_meta.get(rule_id, {}).get('shortDescription', {}).get('text', rule_id)
+                    titulo = result.get('message', {}).get('text', rule_id).split('\n')[0][:80]
                 except:
                     titulo = rule_id
                 
@@ -90,13 +105,16 @@ for run in sast_data.get('runs', []):
                 if msg not in violacoes:
                     violacoes.append(msg)
 
+print(f"Total de vulnerabilidades avaliadas individualmente no arquivo: {total_resultados}")
+print("========================================\n")
+
 # 3. TOMADA DE DECISÃO DA PIPELINE
 if violacoes:
-    print(f"\n[BLOQUEADO] Foram encontradas {len(violacoes)} violações de Requisitos de Segurança (MUST HAVE)!\n")
+    print(f"[BLOQUEADO] Foram encontradas {len(violacoes)} violações de Requisitos de Segurança (MUST HAVE)!\n")
     for v in violacoes:
         print(f"::error::{v}")
     print("\nPipeline bloqueada pelo Quality Gate de Segurança do QA!")
     sys.exit(1)
 else:
-    print("\n[SUCESSO] Validação VRTA concluída. O código está aderente aos requisitos de segurança da cartilha.")
+    print("[SUCESSO] Validação VRTA concluída. O código está aderente aos requisitos de segurança da cartilha.")
     sys.exit(0)
