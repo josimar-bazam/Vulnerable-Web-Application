@@ -14,12 +14,12 @@ jobs:
       env:
         CONVISO_API_KEY: ${{secrets.CONVISO_API_KEY}}
         # Injeta o ID da empresa no container
-        CONVISO_COMPANY_ID: '843' 
+        CONVISO_COMPANY_ID: '443' 
     steps:
     - uses: actions/checkout@v4
 
     - name: Run AST
       # Adicionamos o export garantindo que a CLI leia o ID correto antes de rodar
       run: |
-        export CONVISO_COMPANY_ID='843'
+        export CONVISO_COMPANY_ID='443'
         conviso ast run --vulnerability-auto-close
