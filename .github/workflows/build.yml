@@ -7,7 +7,6 @@ on:
     branches: [ master ]
 
 jobs:
-  # JOB 1: Executa o Scan da Conviso
   conviso-ast:
     runs-on: ubuntu-latest
     container:
@@ -19,32 +18,31 @@ jobs:
     - uses: actions/checkout@v4
 
     - name: Run AST
-      # Adicionamos o "|| true" para garantir que o arquivo seja gerado mesmo se houver falhas
       run: |
         export CONVISO_COMPANY_ID='443'
         conviso ast run --vulnerability-auto-close || true
+        
+        # COPIA O ARQUIVO DO CONTAINER PARA A PASTA DO PROJETO
+        cp /tmp/output.sarif ./output.sarif
 
-    # Salva o arquivo output.sarif gerado pela Conviso para o próximo Job usar
+    # Agora o arquivo "output.sarif" estará na raiz do projeto e o upload vai funcionar!
     - name: Upload SARIF Result
       uses: actions/upload-artifact@v4
       with:
         name: conviso-sarif
-        path: /tmp/output.sarif
+        path: ./output.sarif
 
-  # JOB 2: Nosso Quality Gate de QA (VRTA)
   vrta-gate:
-    needs: conviso-ast # Só roda depois que o scan terminar
+    needs: conviso-ast
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
 
-    # Baixa o relatório gerado pelo Job 1
     - name: Download SARIF Result
       uses: actions/download-artifact@v4
       with:
         name: conviso-sarif
         path: ./
 
-    # Executa a validação usando o Python nativo do Runner
     - name: VRTA - Validar Requisitos de Segurança QA
       run: python vrta_validador.py ./output.sarif
