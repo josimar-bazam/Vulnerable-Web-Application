@@ -1,0 +1,25 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  conviso-ast:
+    runs-on: ubuntu-latest
+    container:
+      image: convisoappsec/convisoast
+      env:
+        CONVISO_API_KEY: ${{secrets.CONVISO_API_KEY}}
+        # Injeta o ID da empresa no container
+        CONVISO_COMPANY_ID: '843' 
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Run AST
+      # Adicionamos o export garantindo que a CLI leia o ID correto antes de rodar
+      run: |
+        export CONVISO_COMPANY_ID='843'
+        conviso ast run --vulnerability-auto-close
