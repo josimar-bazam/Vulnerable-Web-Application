@@ -22,10 +22,19 @@ jobs:
         export CONVISO_COMPANY_ID='443'
         conviso ast run --vulnerability-auto-close || true
         
-        # COPIA O ARQUIVO DO CONTAINER PARA A PASTA DO PROJETO
-        cp /tmp/output.sarif ./output.sarif
+        # BUSCA DINÂMICA DO ARQUIVO SARIF GERADO
+        echo "Buscando arquivo SARIF gerado pelo Conviso..."
+        find /tmp -name "*.sarif" -exec cp {} ./output.sarif \; 2>/dev/null || true
+        
+        # VALIDAÇÃO DE EXISTÊNCIA DO ARQUIVO ANTES DE PROSSEGUIR
+        if [ -f "./output.sarif" ]; then
+          echo "Sucesso: arquivo SARIF localizado e copiado para ./output.sarif"
+        else
+          echo "Erro: Nenhum arquivo SARIF foi gerado no processo."
+          exit 1
+        fi
 
-    # Agora o arquivo "output.sarif" estará na raiz do projeto e o upload vai funcionar!
+    # O arquivo "output.sarif" agora está na raiz do projeto e o upload funcionará perfeitamente
     - name: Upload SARIF Result
       uses: actions/upload-artifact@v4
       with:
