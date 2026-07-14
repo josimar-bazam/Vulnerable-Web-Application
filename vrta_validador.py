@@ -1,19 +1,23 @@
 import sys
 import json
 import os
+import re
 
 # Pega o caminho do arquivo SARIF
 arquivo_sast = sys.argv[1] if len(sys.argv) > 1 else './output.sarif'
 
-# 1. MAPEAMENTO DA CARTILHA DE QA (MUST HAVE)
-# Mapeamos o ID do requisito para o código numérico do CWE
+# 1. MAPEAMENTO COMPLETO DA CARTILHA DE QA (MUST HAVE)
+# Mapeamos o ID do requisito para o número bruto do CWE
 cartilha_must_have = {
     "89": "M-REQ-001 (SQL Injection)",
     "77": "M-REQ-001 (Command Injection)",
+    "78": "M-REQ-001 (OS Command Injection)",
     "90": "M-REQ-001 (LDAP Injection)",
     "611": "M-REQ-001 (XML External Entity - XXE)",
     "74": "M-REQ-001 (JSON/XML Injection)",
     "94": "M-REQ-001 (Code Injection)",
+    "98": "M-REQ-001 (Local/Remote File Inclusion - LFI/RFI)",
+    "22": "M-REQ-001 (Path Traversal)",
     "79": "M-REQ-002 (Cross-Site Scripting - XSS)",
     "693": "M-REQ-002 (Clickjacking / UI Redressing)",
     "116": "M-REQ-002 (Improper Encoding)",
@@ -38,56 +42,55 @@ with open(arquivo_sast, 'r') as f:
     sast_data = json.load(f)
 
 violacoes = []
-
-print("=== INICIANDO VALIDAÇÃO DE REQUISITOS (VRTA) ===")
-
-# Vamos criar um dicionário de regras indexado pelo ID da regra para buscar os metadados dela
 regras_meta = {}
+
+# Mapeia as regras globais do SARIF para buscar descrições amigáveis depois
 for run in sast_data.get('runs', []):
-    resources = run.get('tool', {}).get('driver', {})
-    for rule in resources.get('rules', []):
+    driver = run.get('tool', {}).get('driver', {})
+    for rule in driver.get('rules', []):
         regras_meta[rule.get('id')] = rule
 
-# 2. VARREDURA DE ACHADOS
+print("=== INICIANDO VARREDURA PROFUNDA DE REQUISITOS (VRTA) ===")
+
+# 2. VARREDURA DE ACHADOS COM REGEX
 for run in sast_data.get('runs', []):
     for result in run.get('results', []):
         rule_id = result.get('ruleId', '')
         
-        # Pega a mensagem de erro que descreve a vulnerabilidade
-        mensagem = result.get('message', {}).get('text', '')
+        # Converte o bloco inteiro de resultado e os metadados da regra em texto string
+        objeto_completo_str = json.dumps(result)
+        if rule_id in regras_meta:
+            objeto_completo_str += " " + json.dumps(regras_meta[rule_id])
         
-        # Pega as propriedades e tags da regra associada
-        regra_associada = regras_meta.get(rule_id, {})
-        tags_da_regra = regra_associada.get('properties', {}).get('tags', [])
-        short_description = regra_associada.get('shortDescription', {}).get('text', '')
-        help_uri = regra_associada.get('helpUri', '')
-
-        # Unifica todo o texto que possa conter uma menção ao CWE (ex: "CWE-89", "cwe:89", "CWE: 89")
-        texto_busca = str([rule_id, mensagem, tags_da_regra, short_description, help_uri]).upper()
-
-        # Verifica se algum dos CWEs mapeados na cartilha está presente no texto descritivo do achado
-        for cwe_num, req_desc in cartilha_must_have.items():
-            # Cria padrões comuns de escrita de CWE para buscar no texto
-            padroes_cwe = [f"CWE-{cwe_num}", f"CWE:{cwe_num}", f"CWE_{cwe_num}", f"CWE {cwe_num}"]
-            
-            padrone_encontrado = False
-            for padrao in padroes_cwe:
-                if padrao in texto_busca:
-                    padrone_encontrado = True
-                    break
-                    
-            if padrone_encontrado:
+        # Expressão Regular para capturar qualquer menção a CWE (Ex: CWE-89, cwe:78, CWE_98, CWE 89)
+        cwes_encontrados = re.findall(r'(?i)CWE[-_:\s]?(\d+)', objeto_completo_str)
+        
+        # Remove duplicatas encontradas para este mesmo achado
+        cwes_encontrados = list(set(cwes_encontrados))
+        
+        # Valida contra as regras críticas de QA
+        for cwe_num in cwes_encontrados:
+            if cwe_num in cartilha_must_have:
+                req_desc = cartilha_must_have[cwe_num]
+                
+                # Tenta buscar a localização do erro no código
                 try:
                     local = result['locations'][0]['physicalLocation']['artifactLocation']['uri']
                     linha = result['locations'][0]['physicalLocation']['region']['startLine']
                 except (KeyError, IndexError):
                     local, linha = "Desconhecido", "?"
                 
-                msg = f"Falha de Requisito: {req_desc} violado no arquivo {local} (Linha {linha})."
+                # Tenta buscar o título amigável da vulnerabilidade
+                try:
+                    titulo = regras_meta.get(rule_id, {}).get('shortDescription', {}).get('text', rule_id)
+                except:
+                    titulo = rule_id
+                
+                msg = f"Falha de Requisito: {req_desc} violado -> [{titulo}] no arquivo {local} (Linha {linha}) [CWE-{cwe_num}]"
                 if msg not in violacoes:
                     violacoes.append(msg)
 
-# 3. DECISÃO DA PIPELINE
+# 3. TOMADA DE DECISÃO DA PIPELINE
 if violacoes:
     print(f"\n[BLOQUEADO] Foram encontradas {len(violacoes)} violações de Requisitos de Segurança (MUST HAVE)!\n")
     for v in violacoes:
